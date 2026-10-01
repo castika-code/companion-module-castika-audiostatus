@@ -15,7 +15,7 @@ Without the server OBS reports nothing and the buttons stay dark. The module nev
 - **Meter Colors** has to match the preset chosen in OBS under Settings, Accessibility, Color Preset, or the buttons disagree with the mixer. Colors changed there one at a time rather than as a preset cannot be followed.
 - **Meter Style** **Stripes** paints the three bands flat with a hard edge where they turn, as the OBS mixer does. **Gradient** blends them, turning color at the same levels.
 - **Meter Scale** where a level is drawn, not what it means. It is the scale for every button on this connection, and a button cannot pick another.
-- **Loudness Line** how the dark line inside the bar behaves. **Steady** agrees with the OBS mixer; **Follows every change** draws each reading as it arrives. The bar itself is unaffected either way.
+- **Loudness Line** how the dark line inside the bar behaves. **Follows slowly** settles the way the OBS mixer does; **Follows quickly** draws each reading as it arrives. The bar itself is unaffected either way.
 
 ## Colors and scales
 

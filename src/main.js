@@ -1,6 +1,7 @@
 const { InstanceBase, InstanceStatus, Regex, combineRgb } = require('@companion-module/base')
 const { CLIP_LEVEL, MIX_ID, MIX_NAME, State, classify } = require('./source.js')
-const { Source } = require('./sources/obs.js')
+const { Source: ObsSource } = require('./sources/obs.js')
+const { Source: AtemSource } = require('./sources/atem.js')
 const { blinkPhase, drawBlock, faderPosition } = require('./draw.js')
 const { group, meterKey } = require('./group.js')
 const { Hold, PEAK_HOLD_MS, INPUT_PEAK_HOLD_MS } = require('./ballistics.js')
@@ -50,10 +51,11 @@ class StreamLevelInstance extends InstanceBase {
 		this.config = { ...config, password: secrets?.password ?? '' }
 		this.fillInNewSettings(config)
 
-		// The one source there is, reached only through the methods src/source.js
+		// The machine the form names, reached only through the methods src/source.js
 		// defines, so the drawing, the feedbacks and the presets carry nothing about
-		// OBS. The settings object is handed over rather than copied out of, since the
-		// source reads the address off it every time it opens.
+		// either one. The settings object is handed over rather than copied out of,
+		// since the source reads the address off it every time it opens.
+		const Source = this.config.device === 'atem' ? AtemSource : ObsSource
 		this.source = new Source(this.config, {
 			onStatus: (state, message) => this.handleStatus(state, message),
 			onChanged: () => this.catalogChanged(),
@@ -127,6 +129,8 @@ class StreamLevelInstance extends InstanceBase {
 	 */
 	fillInNewSettings(config) {
 		const missing = {}
+		if (!config.device) missing.device = 'obs'
+		if (!config.atemHost) missing.atemHost = '192.168.10.240'
 		if (!config.scheme) missing.scheme = 'ws'
 		if (!config.palette) missing.palette = 'default'
 		// A connection saved when the second palette was spelled the British way holds
@@ -176,8 +180,24 @@ class StreamLevelInstance extends InstanceBase {
 	getConfigFields() {
 		return [
 			{
+				// Which machine this connection meters. Everything below that names one of
+				// them is shown only while it is chosen. A visibility rule may only name a
+				// field carrying disableAutoExpression, so this one carries it.
+				type: 'dropdown',
+				id: 'device',
+				label: 'Device',
+				width: 12,
+				default: 'obs',
+				disableAutoExpression: true,
+				choices: [
+					{ id: 'obs', label: 'OBS Studio' },
+					{ id: 'atem', label: 'Blackmagic ATEM' },
+				],
+			},
+			{
 				type: 'static-text',
 				id: 'info',
+				isVisibleExpression: '$(options:device) == "obs"',
 				width: 12,
 				// Companion renders a full width static text longer than a hundred characters
 				// as the text alone, and writes no label element at all when the label is
@@ -193,6 +213,7 @@ class StreamLevelInstance extends InstanceBase {
 			{
 				type: 'textinput',
 				id: 'host',
+				isVisibleExpression: '$(options:device) == "obs"',
 				label: 'OBS IP / Hostname',
 				width: 6,
 				default: '127.0.0.1',
@@ -201,6 +222,7 @@ class StreamLevelInstance extends InstanceBase {
 			{
 				type: 'number',
 				id: 'port',
+				isVisibleExpression: '$(options:device) == "obs"',
 				label: 'OBS Port',
 				width: 6,
 				default: 4455,
@@ -211,6 +233,7 @@ class StreamLevelInstance extends InstanceBase {
 				// A secret field is hidden on screen and kept apart from the settings.
 				type: 'secret-text',
 				id: 'password',
+				isVisibleExpression: '$(options:device) == "obs"',
 				label: 'OBS Password',
 				width: 12,
 				default: '',
@@ -220,6 +243,7 @@ class StreamLevelInstance extends InstanceBase {
 				// reached through a proxy that terminates TLS.
 				type: 'dropdown',
 				id: 'scheme',
+				isVisibleExpression: '$(options:device) == "obs"',
 				label: 'Connection Type',
 				width: 12,
 				default: 'ws',
@@ -227,6 +251,26 @@ class StreamLevelInstance extends InstanceBase {
 					{ id: 'ws', label: 'WebSocket (ws)' },
 					{ id: 'wss', label: 'Secure WebSocket (wss)' },
 				],
+			},
+			{
+				type: 'static-text',
+				id: 'atemInfo',
+				width: 12,
+				label: '',
+				isVisibleExpression: '$(options:device) == "atem"',
+				value:
+					'Enter the address of the switcher below. It needs nothing switched on and no password, ' +
+					'and this module only listens: it never changes a setting on the desk.',
+			},
+			{
+				// The port is not a setting: the protocol fixes it.
+				type: 'textinput',
+				id: 'atemHost',
+				label: 'ATEM IP / Hostname',
+				width: 12,
+				default: '192.168.10.240',
+				regex: Regex.HOSTNAME,
+				isVisibleExpression: '$(options:device) == "atem"',
 			},
 			{
 				// The entries name the colors rather than the OBS preset they belong to.
@@ -269,8 +313,8 @@ class StreamLevelInstance extends InstanceBase {
 				width: 12,
 				default: 'smoothed',
 				choices: [
-					{ id: 'smoothed', label: 'Steady, as in the OBS mixer' },
-					{ id: 'instant', label: 'Follows every change' },
+					{ id: 'smoothed', label: 'Follows slowly' },
+					{ id: 'instant', label: 'Follows quickly' },
 				],
 			},
 		]

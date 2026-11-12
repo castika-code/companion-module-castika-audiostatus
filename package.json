@@ -1,6 +1,6 @@
 {
-	"name": "castika-streamlevel",
-	"version": "1.0.1",
+	"name": "castika-audiostatus",
+	"version": "2.0.0",
 	"main": "src/entry.mjs",
 	"scripts": {
 		"format": "prettier -w .",
@@ -9,7 +9,7 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/castika-code/companion-module-castika-streamlevel.git"
+		"url": "git+https://github.com/castika-code/companion-module-castika-audiostatus.git"
 	},
 	"engines": {
 		"node": "^22.20",

@@ -10,6 +10,13 @@ const { createSocket } = require('node:dgram')
 // The port the switcher listens on. It is not a setting.
 const DEVICE_PORT = 9910
 
+// The range the local port is chosen from.
+const LOCAL_PORT_FIRST = 49152
+const LOCAL_PORT_LAST = 65535
+
+// The local port the system chooses.
+const ANY_LOCAL_PORT = 0
+
 // The header is twelve bytes, big endian throughout. The first two carry the
 // flags in the top five bits and the whole packet's length in the low eleven.
 const HEADER_LENGTH = 12
@@ -107,6 +114,17 @@ class AtemConnection {
 		this.wanted = false
 		this.ready = false
 
+		// Whether anything at all has arrived on the current socket, which separates a
+		// switcher that is not there from one that answered and then went quiet.
+		this.answered = false
+
+		// The local port every reconnect of this connection goes out from. A switcher
+		// identifies a client by address and port together, so arriving again on the
+		// same port is the same client returning rather than another one taking a
+		// connection slot. It is picked at random, since two connections in one
+		// Companion must not collide.
+		this.localPort = LOCAL_PORT_FIRST + Math.floor(Math.random() * (LOCAL_PORT_LAST - LOCAL_PORT_FIRST + 1))
+
 		// The session the switcher assigned. Every packet carries it, and the opening
 		// packet carries a made up one until the switcher answers with its own.
 		this.sessionId = 0
@@ -203,7 +221,15 @@ class AtemConnection {
 	open() {
 		const host = this.config.atemHost || '127.0.0.1'
 		this.handlers.onStatus('connecting', `connecting to ${host}`)
+		this.openOn(this.localPort, host)
+	}
 
+	/**
+	 * Open the socket on one local port and knock. Nothing is sent before the bind
+	 * has finished, because a send from an unbound socket goes out on whatever port
+	 * the system hands it rather than the one this connection keeps.
+	 */
+	openOn(port, host) {
 		let socket
 		try {
 			socket = createSocket('udp4')
@@ -213,6 +239,7 @@ class AtemConnection {
 		}
 		this.socket = socket
 		this.ready = false
+		this.answered = false
 		this.toldLevels = null
 		this.sinceAck = 0
 		this.nextPacketId = 1
@@ -228,13 +255,22 @@ class AtemConnection {
 		socket.on('error', (error) => {
 			if (socket !== this.socket) return
 			this.dropSocket()
+			// Another process may already hold the port this connection picked, which is
+			// not a fault of its own: the attempt is made again on any port at all.
+			if (port !== ANY_LOCAL_PORT && error.code === 'EADDRINUSE') {
+				this.openOn(ANY_LOCAL_PORT, host)
+				return
+			}
 			this.fail(`the socket failed: ${error.message}`)
 		})
 
-		// A made up session id for the opening packet alone. The switcher answers with
-		// the one to use from then on.
-		this.sessionId = 1 + Math.floor(Math.random() * 0xfffe)
-		this.sendOpening()
+		socket.bind(port, () => {
+			if (socket !== this.socket) return
+			// A made up session id for the opening packet alone. The switcher answers with
+			// the one to use from then on.
+			this.sessionId = 1 + Math.floor(Math.random() * 0xfffe)
+			this.sendOpening()
+		})
 
 		// Give the handshake a deadline, or a switcher that answers once and then says
 		// nothing holds the connection in "connecting" for ever.
@@ -242,8 +278,14 @@ class AtemConnection {
 		this.handshakeTimer = setTimeout(() => {
 			this.handshakeTimer = null
 			if (socket !== this.socket || this.ready) return
+			// Which of the two went wrong is lost once the socket is let go of.
+			const answered = this.answered
 			this.dropSocket()
-			this.fail(`no switcher answered at ${host}.`)
+			this.fail(
+				answered
+					? `the switcher at ${host} answered but never finished sending its state.`
+					: `no switcher answered at ${host}.`,
+			)
 		}, HANDSHAKE_TIMEOUT_MS)
 
 		this.clearWatchdog()
@@ -255,6 +297,7 @@ class AtemConnection {
 		const socket = this.socket
 		this.socket = null
 		this.ready = false
+		this.answered = false
 		this.toldLevels = null
 		this.inFlight = []
 		this.held.clear()
@@ -390,6 +433,7 @@ class AtemConnection {
 		if (length !== packet.length) return
 
 		this.lastHeardAt = Date.now()
+		this.answered = true
 		const flags = packet.readUInt16BE(0) >> FLAG_SHIFT
 		// The switcher assigns the session, so whatever it last used is the right one.
 		this.sessionId = packet.readUInt16BE(AT_SESSION)

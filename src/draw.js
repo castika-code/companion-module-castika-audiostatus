@@ -396,7 +396,8 @@ function paint(width, height, unitWidth, unitHeight, spec) {
 		blinkOn = true,
 		filters = [],
 		side = 'both',
-		bus = false,
+		// The fader is one nobody can move, on a bus that has none of its own.
+		faderFixed = false,
 		palette: paletteName = 'default',
 		style = 'stripes',
 		scale: scaleName = 'even',
@@ -440,22 +441,14 @@ function paint(width, height, unitWidth, unitHeight, spec) {
 
 	if (channels.length === 0 || barHeight <= 0) return canvas
 
-	// What the button is made of, left to right. The mix carries one bar group
-	// rather than two, and its fader is fixed: a bus has no fader or mute of its
-	// own.
-	const groups = bus
-		? ['fader', 'post']
-		: side === 'both'
-			? ['pre', 'fader', 'post']
-			: side === 'pre'
-				? ['pre', 'fader']
-				: ['fader', 'post']
+	// What the button is made of, left to right.
+	const groups = side === 'both' ? ['pre', 'fader', 'post'] : side === 'pre' ? ['pre', 'fader'] : ['fader', 'post']
 	// Where everything sits is worked out before anything is drawn, so a channel's
 	// strip, bar and mute mark are placed from one pair of edges.
 	const sizes = { gap, faderGap, faderWidth }
 	const items = itemsOf(groups, channels)
 	const cols = Math.max(1, Math.round(width / unitWidth))
-	const boxes = layout(items, sizes, unitWidth, cols, sideMargin, bus ? 'post' : side)
+	const boxes = layout(items, sizes, unitWidth, cols, sideMargin, side)
 
 	for (const box of boxes) {
 		if (box.kind === 'fader') {
@@ -465,7 +458,7 @@ function paint(width, height, unitWidth, unitHeight, spec) {
 				fader,
 				live,
 				unit: unitHeight,
-				fixed: bus,
+				fixed: faderFixed,
 				misset,
 			})
 			continue
@@ -575,8 +568,8 @@ function drawFader(canvas, x, y, width, height, { fader, live, unit, fixed = fal
 	if (fader === null) return
 
 	if (fixed) {
-		// A bus carries no fader, so the knob stands at unity, duller and with no
-		// line across it.
+		// A bus with no fader of its own stands at unity, duller and with no line
+		// across it.
 		canvas.rect(x, knobY, width, knobHeight, FADER_FIXED)
 		return
 	}

@@ -9,6 +9,12 @@ const { Hold, PEAK_HOLD_MS, INPUT_PEAK_HOLD_MS } = require('./ballistics.js')
 // How often the buttons are repainted.
 const REDRAW_MS = 100
 
+// The machines a connection may meter, named as the form names them.
+const DEVICES = [
+	{ id: 'obs', label: 'OBS Studio' },
+	{ id: 'atem', label: 'Blackmagic ATEM' },
+]
+
 // The level scales the connection offers: four views of the same sixty decibels,
 // differing only in how much of the bar the top twenty are given.
 const LEVEL_SCALES = [
@@ -46,7 +52,7 @@ const CLIP_HOLD_MS = 1000
 // How long the levels go on arriving after the last meter button has gone.
 const WATCH_OFF_DELAY_MS = 5000
 
-class StreamLevelInstance extends InstanceBase {
+class AudioStatusInstance extends InstanceBase {
 	async init(config, isFirstInit, secrets) {
 		this.config = { ...config, password: secrets?.password ?? '' }
 		this.fillInNewSettings(config)
@@ -189,10 +195,7 @@ class StreamLevelInstance extends InstanceBase {
 				width: 12,
 				default: 'obs',
 				disableAutoExpression: true,
-				choices: [
-					{ id: 'obs', label: 'OBS Studio' },
-					{ id: 'atem', label: 'Blackmagic ATEM' },
-				],
+				choices: DEVICES,
 			},
 			{
 				type: 'static-text',
@@ -328,8 +331,14 @@ class StreamLevelInstance extends InstanceBase {
 	/** The sources offered in the dropdown, the mix first, then the rest. */
 	sourceChoices() {
 		const sources = this.source.list()
-		if (sources.length === 0) return [{ id: '', label: 'No audio inputs found in OBS' }]
+		if (sources.length === 0) return [{ id: '', label: `No audio inputs reported by ${this.deviceLabel()}` }]
 		return sources.map((entry) => ({ id: entry.id, label: entry.name }))
+	}
+
+	/** The machine this connection is set to, named as the form names it. */
+	deviceLabel() {
+		const device = DEVICES.find((choice) => choice.id === this.config?.device)
+		return (device ?? DEVICES[0]).label
 	}
 
 	feedbackDefinitions() {
@@ -416,9 +425,10 @@ class StreamLevelInstance extends InstanceBase {
 	}
 
 	/**
-	 * Presets are handed over as a structure and the definitions it refers to. One
-	 * preset per input, carrying that input's name, and a single empty preset where
-	 * OBS has told us nothing yet, so the list is never bare.
+	 * Presets are handed over as a structure and the definitions it refers to. Three
+	 * presets per entry in the list, one per side of the fader, each carrying that
+	 * entry's name, and a single empty preset where the machine has told us nothing
+	 * yet, so the list is never bare.
 	 *
 	 * WHAT IT TAKES FOR THE PICTURE TO APPEAR AT ALL:
 	 *
@@ -471,18 +481,16 @@ class StreamLevelInstance extends InstanceBase {
 		const presets = {}
 		const order = []
 		const sources = this.source.list()
-		if (sources.length > 0) {
-			presets[`meter_${MIX_ID}`] = meter(MIX_NAME, MIX_ID, 'post', MIX_NAME)
-			order.push(`meter_${MIX_ID}`)
-		}
 
+		// The mix is one of these, and comes first because the list does. The filter
+		// mark is painted on an incoming bar, so a mix offered only after the fader
+		// would show nothing of the processing on the machine's own output.
 		const sides = [
 			['both', 'in and out'],
 			['post', 'out'],
 			['pre', 'in'],
 		]
 		for (const entry of sources) {
-			if (entry.id === MIX_ID) continue
 			const name = entry.name
 			for (const [side, suffix] of sides) {
 				const id = `meter_${entry.id}_${side}`
@@ -496,7 +504,7 @@ class StreamLevelInstance extends InstanceBase {
 			order.push('meter')
 		}
 
-		const structure = [{ id: 'meters', name: 'Castika StreamLevel', definitions: order }]
+		const structure = [{ id: 'meters', name: 'Castika AudioStatus', definitions: order }]
 		return [structure, presets]
 	}
 
@@ -745,11 +753,21 @@ class StreamLevelInstance extends InstanceBase {
 	}
 
 	/**
-	 * The sound leaving the machine, as well as it can be known. There is no meter
-	 * for the final mix, so the members that reach what the stream sends are added
-	 * together as a root of squares.
+	 * The sound leaving the machine, as well as it can be known: the members the
+	 * source offers, added together as a root of squares. A machine that meters its
+	 * own output offers one member, which adds up to itself.
 	 */
 	mixSpec(connected) {
+		// The mix's own fader and filters, where the machine has a bus to carry them.
+		// Where it has none the fader drawn stands at unity and cannot be moved: an
+		// empty groove would read as a fader whose position could not be read.
+		const mix = connected ? this.source.getMix() : null
+		const own = {
+			fader: mix ? faderPosition(mix.volume) : 1,
+			faderFixed: !mix,
+			filters: mix?.filters ?? [],
+		}
+
 		// No list at all is the source saying nothing is arriving, which is not the
 		// same as a live reading of silence.
 		const members = connected ? this.source.mixMembers() : null
@@ -758,9 +776,11 @@ class StreamLevelInstance extends InstanceBase {
 			return {
 				channels: [0, 0].map(() => ({ state, post: 0, loudness: 0, pre: 0 })),
 				muted: false,
-				fader: null,
+				...own,
+				// With nothing arriving, a fader that cannot be read is drawn standing in
+				// the middle of its groove rather than claiming unity.
+				fader: mix ? faderPosition(mix.volume) : null,
 				wrongTrack: false,
-				bus: true,
 				live: false,
 			}
 		}
@@ -787,11 +807,8 @@ class StreamLevelInstance extends InstanceBase {
 			return {
 				channels: [0, 0].map(() => ({ state: State.NO_SIGNAL, post: 0, loudness: 0, pre: 0 })),
 				muted: false,
-				// A bus has no fader of its own, so the one drawn stands at unity. An empty
-				// groove would read as a fader whose position could not be read.
-				fader: 1,
+				...own,
 				wrongTrack: false,
-				bus: true,
 				live: true,
 			}
 		}
@@ -815,9 +832,8 @@ class StreamLevelInstance extends InstanceBase {
 				}
 			}),
 			muted: false,
-			fader: 1,
+			...own,
 			wrongTrack: false,
-			bus: true,
 			live: true,
 		}
 	}
@@ -984,10 +1000,5 @@ function shortName(name) {
 // Companion imports the class itself, so what this file exports has to BE the
 // class. The upgrade scripts travel on the class, and the entry file beside this
 // one presents both of them to Companion.
-module.exports = StreamLevelInstance
-module.exports.UpgradeScripts = [
-	upgradeMeterOptions,
-	upgradeButtonScale,
-	upgradeButtonOffLevelScale,
-	upgradeMeterSize,
-]
+module.exports = AudioStatusInstance
+module.exports.UpgradeScripts = [upgradeMeterOptions, upgradeButtonScale, upgradeButtonOffLevelScale, upgradeMeterSize]

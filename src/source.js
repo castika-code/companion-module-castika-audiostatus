@@ -5,8 +5,9 @@
  * machine speaks. The drawing, the feedbacks and the presets know only what is
  * written here, so a second machine is a new file in that folder rather than a
  * change to the picture. It is not a second machine for free: the connection
- * settings form in src/main.js names OBS field by field, and a second adapter
- * would need its own fields there as well as its own file here.
+ * settings form in src/main.js offers a machine to pick and one set of fields per
+ * machine, each set shown only while its machine is chosen, so a further adapter
+ * is a choice and a set of fields there as well as a file here.
  *
  * FIVE THINGS AN ADAPTER MUST SUPPLY, per source it lists:
  *
@@ -31,9 +32,12 @@
  * 6. A mix: what is leaving the machine, offered as one entry in the list beside
  *    the sources that feed it. A machine that meters its own output measures it;
  *    one that does not can only add its members up, which is what the OBS
- *    adapter does and says.
- * 7. The filters each source carries, and which of them are switched on. It is
- *    the one thing on the button that is not a level, and a machine with no such
+ *    adapter does and says. A machine whose mix is a bus of its own carries a
+ *    fader and filters there too, and answers for them in the same shape as a
+ *    source's. A machine with no such bus leaves both out, which is the truth
+ *    about it rather than a gap in what it was asked.
+ * 7. The filters a source carries, and which of them are switched on. It is the
+ *    one thing on the button that is not a level, and a machine with no such
  *    idea leaves it out rather than reporting none.
  *
  * WHAT AN ADAPTER SHOULD AIM AT is answering all of that from measurement, and
@@ -86,11 +90,15 @@
  *                        is known to miss what the stream sends.
  *   readings(id)         that source's channels as they stand, or null.
  *   mixMembers()         [{ id, readings }], or null.
+ *   getMix()             the mix's own { volume, filters }, in the shape get(id)
+ *                        answers them in, or null on a machine whose mix is no
+ *                        bus and so has neither.
  *   capabilities         the record below.
  *
  * THE MIX IS IN list() AND IS NOT ANSWERED FOR by get() or readings(). It is not
  * one of the machine's sources and no read of them can speak for it, so it is
- * reached through mixMembers() alone and the drawing sums the members itself.
+ * reached through mixMembers() and getMix() alone and the drawing sums the
+ * members itself.
  *
  * readings(id) RETURNS NULL where the source is not reporting, and that null is
  * a state of its own rather than an absence of news: the source is not live,
@@ -154,9 +162,14 @@ const Answers = {
  *            there is no mix to show.
  *   filters  whether the filters of a source can be read, which decides whether
  *            the light under the fader means anything.
+ *   mixFader    where the mix's own fader stands, and NONE on a machine whose
+ *               mix is no bus and has none.
+ *   mixFilters  the filters the mix itself carries, and NONE for the same
+ *               reason.
  *
- * Nothing reads this record yet: it is the record a second adapter fills in, and
- * the drawing cannot usefully branch on it until there is one to branch for.
+ * Both adapters fill this in and nothing reads it. It states what each of them
+ * can answer; what a button does about a reading that is missing is decided where
+ * the spec is built rather than from here.
  */
 
 // What a single channel is doing, and how it is worked out.

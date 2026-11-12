@@ -1,14 +1,14 @@
 {
 	"$schema": "../node_modules/@companion-module/base/assets/manifest.schema.json",
-	"id": "castika-streamlevel",
+	"id": "castika-audiostatus",
 	"type": "connection",
-	"name": "Castika StreamLevel",
-	"shortname": "Castika_StreamLevel",
-	"description": "Draws OBS audio levels on your buttons, so one glance tells you the sound going out is alive and not clipping.",
-	"version": "1.0.1",
+	"name": "Castika AudioStatus",
+	"shortname": "Castika_AudioStatus",
+	"description": "Shows the state of your audio from OBS or ATEM on your buttons: the level, the mute, the fader, and whether it is going out.",
+	"version": "2.0.0",
 	"license": "MIT",
-	"repository": "git+https://github.com/castika-code/companion-module-castika-streamlevel.git",
-	"bugs": "https://github.com/castika-code/companion-module-castika-streamlevel/issues",
+	"repository": "git+https://github.com/castika-code/companion-module-castika-audiostatus.git",
+	"bugs": "https://github.com/castika-code/companion-module-castika-audiostatus/issues",
 	"maintainers": [
 		{
 			"name": "Castika",
@@ -16,7 +16,7 @@
 			"email": "castika@castika.com"
 		}
 	],
-	"legacyIds": [],
+	"legacyIds": ["castika-streamlevel"],
 	"runtime": {
 		"type": "node22",
 		"api": "nodejs-ipc",
@@ -24,6 +24,6 @@
 		"entrypoint": "../src/entry.mjs"
 	},
 	"manufacturer": "Castika",
-	"products": ["StreamLevel"],
-	"keywords": ["obs", "audio", "level", "meter", "vu", "broadcast"]
+	"products": ["AudioStatus"],
+	"keywords": ["obs", "atem", "audio", "level", "meter", "vu", "broadcast"]
 }

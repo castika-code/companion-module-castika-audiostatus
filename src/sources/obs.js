@@ -68,7 +68,8 @@ class Source {
 	 * What this adapter answers, and how well; the vocabulary is in
 	 * src/source.js. Three of them are ASSUMED rather than MEASURED: where the
 	 * request for a mute, a fader or a track fails, the input is left carrying
-	 * unmuted, unity and the stream's own track.
+	 * unmuted, unity and the stream's own track. Two are NONE: OBS has no master
+	 * bus, so the mix has neither a fader nor filters of its own.
 	 */
 	get capabilities() {
 		return {
@@ -79,6 +80,8 @@ class Source {
 			live: Answers.MEASURED,
 			mix: Answers.DERIVED,
 			filters: Answers.MEASURED,
+			mixFader: Answers.NONE,
+			mixFilters: Answers.NONE,
 		}
 	}
 
@@ -154,6 +157,14 @@ class Source {
 			members.push({ id, readings })
 		}
 		return members
+	}
+
+	/**
+	 * The mix's own fader and processing, of which there are none: OBS has no
+	 * master bus, so nothing stands between the sum of the inputs and the encoder.
+	 */
+	getMix() {
+		return null
 	}
 
 	/** Whether the level events are arriving at all, asked of the feed rather than per input. */

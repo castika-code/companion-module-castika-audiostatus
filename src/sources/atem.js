@@ -65,6 +65,8 @@ const MASTER_PROPERTIES = 'FAMP'
 const EXPANDER = 'AIXP'
 const COMPRESSOR = 'AICP'
 const LIMITER = 'AILP'
+const MASTER_COMPRESSOR = 'MOCP'
+const MASTER_LIMITER = 'AMLP'
 const INPUT_PROPERTIES = 'InPr'
 const TALLY = 'TlSr'
 
@@ -106,14 +108,28 @@ const AT_STAGE_SOURCE = 8
 const AT_STAGE_ENABLED = 16
 const STAGE_LENGTH = 17
 
-// Where the master's own fader sits in its properties command.
+// Where each fact sits in the master's properties command.
+const AT_MASTER_EQUALIZER_ENABLED = 1
 const AT_MASTER_FADER_GAIN = 12
-const MASTER_PROPERTIES_LENGTH = 16
+const MASTER_PROPERTIES_LENGTH = 20
+
+// Where the enabled flag sits in the master's compressor and limiter commands,
+// which carry no index and no source id because there is one master.
+const AT_MASTER_STAGE_ENABLED = 0
+const MASTER_COMPRESSOR_LENGTH = 24
+const MASTER_LIMITER_LENGTH = 20
 
 // An input's name, and how much room it is given.
 const AT_INPUT_ID = 0
 const AT_INPUT_NAME = 2
 const INPUT_NAME_LENGTH = 20
+
+// The external audio inputs, which the switcher lists without ever naming. The
+// names are the ones on the hardware.
+const EXTERNAL_NAMES = new Map([
+	[1301, 'MIC 1'],
+	[1302, 'MIC 2'],
+])
 
 // The tally command: a count, then three bytes per source.
 const TALLY_ENTRY_LENGTH = 3
@@ -174,8 +190,9 @@ class Source {
 		// input can be split into two sources.
 		this.sources = new Map()
 
-		// The master out, which the switcher meters itself.
-		this.master = { channels: [], volume: 1, lastLevelAt: undefined }
+		// The master out, which the switcher meters itself and which carries processing
+		// and a fader of its own.
+		this.master = { channels: [], volume: 1, stages: {}, lastLevelAt: undefined }
 
 		// Each input's name, by input id.
 		this.names = new Map()
@@ -214,6 +231,8 @@ class Source {
 			live: Answers.MEASURED,
 			mix: Answers.MEASURED,
 			filters: Answers.MEASURED,
+			mixFader: Answers.MEASURED,
+			mixFilters: Answers.MEASURED,
 		}
 	}
 
@@ -249,7 +268,7 @@ class Source {
 	nameOf(id) {
 		const entry = this.sources.get(id)
 		if (!entry) return id
-		const name = this.names.get(entry.index) || String(entry.index)
+		const name = this.names.get(entry.index) || EXTERNAL_NAMES.get(entry.index) || `Input ${entry.index}`
 		return this.splitInputs().has(entry.index) ? `${name} ${entry.source}` : name
 	}
 
@@ -297,8 +316,9 @@ class Source {
 	}
 
 	/**
-	 * The processing stages a source carries and which of them are switched on. A
-	 * stage the switcher has not reported is left out rather than reported off.
+	 * The processing stages a source or the master carries and which of them are
+	 * switched on. A stage the switcher has not reported is left out rather than
+	 * reported off, which is how the master comes to have no expander.
 	 */
 	stagesOf(entry) {
 		const stages = []
@@ -329,6 +349,14 @@ class Source {
 		if (this.master.lastLevelAt === undefined) return null
 		if (Date.now() - this.master.lastLevelAt > SOURCE_SILENCE_MS) return null
 		return [{ id: MIX_ID, readings: this.master.channels }]
+	}
+
+	/**
+	 * The mix's own fader and processing. The master out carries an equalizer, a
+	 * compressor, a limiter and a fader of its own, and all four are read.
+	 */
+	getMix() {
+		return { volume: this.master.volume, filters: this.stagesOf(this.master) }
 	}
 
 	/** Whether the level commands are arriving at all, asked of the feed rather than per source. */
@@ -423,6 +451,19 @@ class Source {
 			case MASTER_PROPERTIES:
 				if (body.length >= MASTER_PROPERTIES_LENGTH) {
 					this.master.volume = fromLevelField(body.readInt32BE(AT_MASTER_FADER_GAIN))
+					this.master.stages.equalizer = body.readUInt8(AT_MASTER_EQUALIZER_ENABLED) > 0
+				}
+				break
+
+			case MASTER_COMPRESSOR:
+				if (body.length >= MASTER_COMPRESSOR_LENGTH) {
+					this.master.stages.compressor = body.readUInt8(AT_MASTER_STAGE_ENABLED) > 0
+				}
+				break
+
+			case MASTER_LIMITER:
+				if (body.length >= MASTER_LIMITER_LENGTH) {
+					this.master.stages.limiter = body.readUInt8(AT_MASTER_STAGE_ENABLED) > 0
 				}
 				break
 

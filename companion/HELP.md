@@ -1,6 +1,6 @@
 # Castika AudioStatus
 
-Draws the state of your audio on your buttons, read from OBS Studio or from a Blackmagic ATEM switcher. **Device** picks which, and the settings under it change to match. Neither machine is ever changed for you.
+Draws the state of your audio on your buttons, read from OBS Studio or from a Blackmagic ATEM switcher. **Device** picks which, and the settings under it change to match. Neither machine is ever changed for you. Version 2 renamed the module, so a connection made with version 1 has to be made again.
 
 - **OBS Studio.** In OBS, open Tools, then WebSocket Server Settings, and check Enable WebSocket server. Fill in the address, port and password that dialog shows, `127.0.0.1` if OBS runs on this machine. Without the server OBS reports nothing and the buttons stay dark. **Connection Type** stays on plain WebSocket unless OBS is reached through a proxy that terminates TLS.
 - **Blackmagic ATEM.** Enter the switcher's address, and that is all of it: nothing to switch on, and no password to find.

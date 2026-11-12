@@ -150,6 +150,10 @@ class AtemConnection {
 		// The last failure reported, so one reason is not logged once per attempt.
 		this.lastFailure = null
 
+		// Whether a failure is standing. While one is, a retry leaves it on screen
+		// instead of reporting that a connection is being made.
+		this.failed = false
+
 		// How often the subscription is sent again. Zero sends it once and leaves it,
 		// which is what measuring whether it expires needs.
 		this.renewEvery = RENEW_LEVELS_MS
@@ -200,12 +204,14 @@ class AtemConnection {
 
 	connect(config) {
 		this.wanted = true
+		this.failed = false
 		this.config = config
 		this.open()
 	}
 
 	close() {
 		this.wanted = false
+		this.failed = false
 		this.clearReconnect()
 		this.clearHandshake()
 		this.clearWatchdog()
@@ -220,7 +226,7 @@ class AtemConnection {
 
 	open() {
 		const host = this.config.atemHost || '127.0.0.1'
-		this.handlers.onStatus('connecting', `connecting to ${host}`)
+		if (!this.failed) this.handlers.onStatus('connecting', `connecting to ${host}`)
 		this.openOn(this.localPort, host)
 	}
 
@@ -313,6 +319,7 @@ class AtemConnection {
 	}
 
 	fail(message) {
+		this.failed = true
 		// One reason is reported once. A UDP connection retries every few seconds and
 		// the same sentence every time tells a reader nothing new.
 		if (this.lastFailure === message) {
@@ -520,6 +527,7 @@ class AtemConnection {
 			this.ready = true
 			this.clearHandshake()
 			this.lastFailure = null
+			this.failed = false
 			// A new session arrives with the levels switched off, so saying so costs a
 			// packet and nothing else. Null means there is no session to have told.
 			if (opened) this.toldLevels = false

@@ -5,7 +5,7 @@
 	"name": "Castika AudioStatus",
 	"shortname": "Castika_AudioStatus",
 	"description": "Shows the state of your audio from OBS or ATEM on your buttons: the level, the mute, the fader, and whether it is going out.",
-	"version": "2.0.0",
+	"version": "2.0.1",
 	"license": "MIT",
 	"repository": "git+https://github.com/castika-code/companion-module-castika-audiostatus.git",
 	"bugs": "https://github.com/castika-code/companion-module-castika-audiostatus/issues",

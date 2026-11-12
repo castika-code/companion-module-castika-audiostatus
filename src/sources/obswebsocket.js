@@ -30,9 +30,11 @@ const RECONNECT_DELAY_MS = 3000
 const REQUEST_TIMEOUT_MS = 5000
 
 // How long a connection is given to get from opening the socket to being
-// identified. A socket that is neither open nor closed delivers no close event,
-// so without this the module waits for ever.
+// identified.
 const HANDSHAKE_TIMEOUT_MS = 10000
+
+// What is reported when nothing answers at the address at all.
+const NO_CONNECTION = 'No connection to OBS. Is the WebSocket server switched on?'
 
 // obs-websocket closes with a numbered reason.
 const CLOSE_REASONS = {
@@ -49,7 +51,7 @@ function describeClose(event, wasIdentified) {
 	if (known) return known
 	if (event.reason) return `OBS closed the connection: ${event.reason}`
 	if (wasIdentified) return 'The connection to OBS dropped.'
-	return 'No connection to OBS. Is the WebSocket server switched on?'
+	return NO_CONNECTION
 }
 
 function sha256Base64(value) {
@@ -80,6 +82,10 @@ class ObsConnection {
 		this.handshakeTimer = null
 		this.wanted = false
 		this.identified = false
+
+		// Whether a failure is standing. While one is, a retry leaves it on screen
+		// instead of reporting that a connection is being made.
+		this.failed = false
 
 		// Whether the levels are wanted, and whether this session has been told so. The
 		// answer can change while there is no session to tell, and a reconnection starts
@@ -113,12 +119,14 @@ class ObsConnection {
 
 	connect(config) {
 		this.wanted = true
+		this.failed = false
 		this.config = config
 		this.open()
 	}
 
 	close() {
 		this.wanted = false
+		this.failed = false
 		this.clearReconnect()
 		this.clearHandshake()
 		this.failPending('connection closed')
@@ -145,7 +153,7 @@ class ObsConnection {
 		const scheme = this.config.scheme === 'wss' ? 'wss' : 'ws'
 		const url = `${scheme}://${host}:${port}`
 
-		this.handlers.onStatus('connecting', `connecting to ${url}`)
+		if (!this.failed) this.handlers.onStatus('connecting', `connecting to ${url}`)
 
 		let socket
 		try {
@@ -155,6 +163,10 @@ class ObsConnection {
 			return
 		}
 		this.socket = socket
+
+		// Whether this socket ever reached OPEN, which separates an OBS that is not
+		// there from one that accepted the connection and then said nothing.
+		let opened = false
 
 		// Give the handshake a deadline, or a socket that opens and then hears nothing
 		// holds the connection in "connecting" for ever.
@@ -167,8 +179,18 @@ class ObsConnection {
 		}, HANDSHAKE_TIMEOUT_MS)
 
 		socket.addEventListener('message', (event) => this.receive(event.data))
+		socket.addEventListener('open', () => {
+			opened = true
+		})
 		socket.addEventListener('error', () => {
-			// The close event that follows carries the useful reporting.
+			if (socket !== this.socket) return
+			// A socket whose opening handshake fails fires this event and no close event,
+			// so for a far end that is not there this is the only notice there will be.
+			// Once it is open, the close event that follows carries the reporting.
+			if (opened) return
+			this.clearHandshake()
+			this.dropSocket()
+			this.fail(NO_CONNECTION)
 		})
 		socket.addEventListener('close', (event) => {
 			if (socket !== this.socket) return
@@ -198,6 +220,7 @@ class ObsConnection {
 	}
 
 	fail(message) {
+		this.failed = true
 		this.handlers.onStatus('failed', message)
 		this.scheduleReconnect()
 	}
@@ -273,6 +296,7 @@ class ObsConnection {
 				// reset what the session has already been told it is subscribed to.
 				const opened = !this.identified
 				this.identified = true
+				this.failed = false
 				this.clearHandshake()
 				// In case the wish changed while the handshake was in flight.
 				this.syncSubscriptions()

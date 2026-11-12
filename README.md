@@ -15,6 +15,7 @@ Display the state of your audio directly on Bitfocus Companion buttons, read fro
 ## Installation
 
 Download `castika-audiostatus-<version>.tgz` from this repository's Releases page. In Companion, open Modules, choose Import module package, and select that file.
+Version 2 renamed the module. A connection made with version 1 does not carry over and has to be made again.
 
 Connection setup, placing a meter on a button and reading one are in `companion/HELP.md`, which Companion shows as the connection's own help. They are not repeated here.
 
